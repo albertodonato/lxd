@@ -1,0 +1,120 @@
+#!/usr/bin/env python3
+
+import tempfile
+import shutil
+import random
+import subprocess
+import os
+from os import path
+
+
+STORAGE_BACKENDS = frozenset(['btrfs', 'lvm', 'zfs'])
+
+
+def available_storage_backends():
+    """Return available storage backends."""
+    backends = ['dir']
+    # check if binaries exist
+    backends.extend(
+        backend for backend in STORAGE_BACKENDS
+        if shutil.which(backend))
+    return backends
+
+
+class LXD:
+    """A LXD daemon instance.
+
+    Parameters:
+       name: a name for the instance
+       basedir: the directory under which the LXD_DIR is created.
+
+    """
+
+    _process = None
+
+    def __init__(self, name, basedir, storage_backend=None, verbose=False,
+                 debug=False):
+        self.name = name
+        self.verbose = verbose
+        self.debug = debug
+
+        self.lxd_dir = tempfile.mkdtemp(
+            dir=basedir, prefix='lxd-{}-'.format(name))
+        self.storage_backend = self._select_storage(storage_backend)
+
+        self._basedir = basedir
+
+    @property
+    def log_file(self):
+        """The daemon log file path."""
+        return path.join(self.lxd_dir, 'lxd.log')
+
+    def is_running(self):
+        """Whether the daemon proces is running."""
+        return self._process is not None and self._process.poll() is None
+
+    def start(self):
+        """Spawn the lxd process."""
+        if self.is_running():
+            raise RuntimeError(
+                'The "{}" daemon is already running'.format(self.name))
+        self._setup()
+        self._exec()
+
+    def stop(self):
+        """Terminate the lxd process."""
+        if not self.is_running():
+            return
+        self._process.terminate()
+        if self._process.wait() != 0:
+            raise RuntimeError('Failed to stop "{}" daemon'.format(self.name))
+        self._process = None
+
+    def cleanup(self):
+        """Remove files and directories for this instance."""
+        shutil.rmtree(self.lxd_dir)
+
+    def _setup(self):
+        shutil.copy('deps/server.crt', self.lxd_dir)
+        shutil.copy('deps/server.key', self.lxd_dir)
+
+    def _exec(self):
+        command = ['lxd', '--logfile', self.log_file]
+        if self.verbose:
+            command.append('--verbose')
+        if self.debug:
+            command.append('--debug')
+
+        env = self._env()
+        self._process = subprocess.Popen(
+            command, stderr=subprocess.STDOUT, env=env)
+        subprocess.check_output(['lxd', 'waitready', '--timeout=300'], env=env)
+
+    def _env(self):
+        env = os.environ.copy()
+        env.update(
+            {'LXD_DIR': self.lxd_dir,
+             'LC_ALL': 'C',
+             'TZ': 'UTC'})
+        return env
+
+    def _select_storage(self, name):
+        """Select the storage driver."""
+        if name is None:
+            return
+
+        backends = available_storage_backends()
+        if name == 'random':
+            return random.choice(backends)
+        elif name not in backends:
+            raise RuntimeError('Unknown backend "{}"'.format(name))
+        return name
+
+
+if __name__ == '__main__':
+    l = LXD('foo', 'asdf', storage_backend='random', verbose=True)
+    l.start()
+    import time
+    time.sleep(20)
+    l.stop()
+    l.cleanup()
