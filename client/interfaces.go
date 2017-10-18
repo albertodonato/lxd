@@ -68,6 +68,8 @@ type ContainerServer interface {
 	MigrateContainer(name string, container api.ContainerPost) (op *Operation, err error)
 	DeleteContainer(name string) (op *Operation, err error)
 
+	ConsoleContainer(containerName string, consolePost api.ContainerConsolePost, args *ContainerConsoleArgs) (*Operation, error)
+
 	ExecContainer(containerName string, exec api.ContainerExecPost, args *ContainerExecArgs) (*Operation, error)
 
 	GetContainerFile(containerName string, path string) (content io.ReadCloser, resp *ContainerFileResponse, err error)
@@ -279,6 +281,25 @@ type ContainerSnapshotCopyArgs struct {
 
 // The ContainerExecArgs struct is used to pass additional options during container exec
 type ContainerExecArgs struct {
+	// Standard input
+	Stdin io.ReadCloser
+
+	// Standard output
+	Stdout io.WriteCloser
+
+	// Standard error
+	Stderr io.WriteCloser
+
+	// Control message handler (window resize, signals, ...)
+	Control func(conn *websocket.Conn)
+
+	// Channel that will be closed when all data operations are done
+	DataDone chan bool
+}
+
+// The ContainterconsoleArgs struct is used to pass addtitional options during
+// container console connection
+type ContainerConsoleArgs struct {
 	// Standard input
 	Stdin io.ReadCloser
 

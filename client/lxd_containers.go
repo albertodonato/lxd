@@ -697,6 +697,43 @@ func (r *ProtocolLXD) ExecContainer(containerName string, exec api.ContainerExec
 	return op, nil
 }
 
+// ConsoleContainer connects to the console of a container
+func (r *ProtocolLXD) ConsoleContainer(containerName string, consolePost api.ContainerConsolePost, args *ContainerConsoleArgs) (*Operation, error) {
+	// Send the request
+	op, _, err := r.queryOperation("POST", fmt.Sprintf("/containers/%s/console", containerName), consolePost, "")
+	if err != nil {
+		return nil, err
+	}
+
+	// Parse the fds
+	fds := map[string]string{}
+	value, ok := op.Metadata["fds"]
+	if ok {
+		values := value.(map[string]interface{})
+		for k, v := range values {
+			fds[k] = v.(string)
+		}
+	}
+
+	conn, err := r.GetOperationWebsocket(op.ID, fds["0"])
+	if err != nil {
+		return nil, err
+	}
+
+	// And attach stdin and stdout to it
+	go func() {
+		shared.WebsocketSendStream(conn, args.Stdin, -1)
+		<-shared.WebsocketRecvStream(args.Stdout, conn)
+		conn.Close()
+
+		if args.DataDone != nil {
+			close(args.DataDone)
+		}
+	}()
+
+	return op, nil
+}
+
 // GetContainerFile retrieves the provided path from the container
 func (r *ProtocolLXD) GetContainerFile(containerName string, path string) (io.ReadCloser, *ContainerFileResponse, error) {
 	// Prepare the HTTP request
