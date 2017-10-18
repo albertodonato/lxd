@@ -60,6 +60,11 @@ var containerExecCmd = Command{
 	post: containerExecPost,
 }
 
+var containerConsoleCmd = Command{
+	name: "containers/{name}/console",
+	post: containerConsolePost,
+}
+
 var containerMetadataCmd = Command{
 	name: "containers/{name}/metadata",
 	get:  containerMetadataGet,
