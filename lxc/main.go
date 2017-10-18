@@ -215,6 +215,7 @@ type command interface {
 
 var commands = map[string]command{
 	"config":  &configCmd{},
+	"console": &consoleCmd{},
 	"copy":    &copyCmd{},
 	"delete":  &deleteCmd{},
 	"exec":    &execCmd{},
